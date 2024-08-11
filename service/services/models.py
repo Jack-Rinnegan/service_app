@@ -3,10 +3,24 @@ from django.db import models
 
 from clients.models import Client
 
+from services.tasks import set_price
+
 
 class Service(models.Model):
     name = models.CharField(max_length=100)
     full_price = models.PositiveIntegerField()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.__full_price = self.full_price
+
+    def save(self, *args, **kwargs):
+
+        if self.full_price != self.__full_price:
+            for subscription in self.subscriptions.all():
+                set_price.delay(subscription.id)
+
+        return super().save(*args, **kwargs)
 
 
 class Plan(models.Model):
@@ -24,8 +38,23 @@ class Plan(models.Model):
         ]
     )
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.__discount_percentage = self.discount_percentage
+
+    def save(self, *args, **kwargs):
+
+        if self.discount_percentage != self.__discount_percentage:
+            for subscription in self.subscriptions.all():
+                set_price.delay(subscription.id)
+
+        return super().save(*args, **kwargs)
+
 
 class Subscription(models.Model):
     client = models.ForeignKey(Client, on_delete=models.PROTECT, related_name='subscriptions')
     service = models.ForeignKey(Service, on_delete=models.PROTECT, related_name='subscriptions')
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='subscriptions')
+    price = models.PositiveIntegerField(
+        default=0,
+    )
